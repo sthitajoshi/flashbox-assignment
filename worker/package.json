@@ -1,0 +1,7 @@
+{
+  "name": "flashbox-worker",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": { "start": "node worker.js" },
+  "dependencies": { "redis": "^4.7.0" }
+}

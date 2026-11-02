@@ -1,0 +1,18 @@
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/terraform.tfvars
+terraform/.terraform.lock.hcl
+crash.log
+
+# Node
+node_modules/
+npm-debug.log
+
+# Secrets / env
+.env
+.env.*
+!.env.example
+*.pem
+*.key

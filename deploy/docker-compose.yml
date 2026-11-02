@@ -1,0 +1,55 @@
+services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks: [app]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    image: ${API_IMAGE}
+    environment:
+      REDIS_URL: redis://redis:6379
+      APP_ENV: ${APP_ENV}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks: [app]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  worker:
+    image: ${WORKER_IMAGE}
+    environment:
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks: [app]
+    restart: unless-stopped
+
+  web:
+    image: ${WEB_IMAGE}
+    ports:
+      - "${WEB_PORT}:80"
+    depends_on:
+      api:
+        condition: service_started
+    networks: [app]
+    restart: unless-stopped
+
+networks:
+  app:
+
+volumes:
+  redis_data:

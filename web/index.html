@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Flashbox DevOps Assignment</title>
+  <style>
+    body{font:16px system-ui;max-width:760px;margin:10vh auto;padding:24px;color:#172033}
+    main{border:1px solid #dbe2ea;border-radius:14px;padding:28px}
+    button{padding:10px 16px;border:0;border-radius:8px;background:#1769aa;color:white;cursor:pointer}
+    pre{background:#f4f6f8;padding:16px;border-radius:8px;overflow:auto}
+  </style>
+</head>
+<body>
+<main>
+  <h1>Flashbox</h1>
+  <p>Static web container calling the API through Nginx.</p>
+  <button id="load">Fetch API response</button>
+  <pre id="output">Click the button to call /api/</pre>
+</main>
+<script>
+document.getElementById("load").addEventListener("click", async () => {
+  const output = document.getElementById("output");
+  output.textContent = "Loading...";
+  try {
+    const response = await fetch("/api/");
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || response.statusText);
+    output.textContent = JSON.stringify(data, null, 2);
+  } catch (error) {
+    output.textContent = `Request failed: ${error.message}`;
+  }
+});
+</script>
+</body>
+</html>

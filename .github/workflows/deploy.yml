@@ -1,0 +1,104 @@
+name: Test, Build and Deploy
+on:
+  push:
+    branches: [main, staging]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - name: Install API dependencies
+        working-directory: api
+        run: npm ci
+      - name: Run API tests
+        working-directory: api
+        run: npm test
+      - name: Build all images (validation)
+        run: |
+          docker build -t flashbox-api:test ./api
+          docker build -t flashbox-worker:test ./worker
+          docker build -t flashbox-web:test ./web
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.vars.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set image tag
+        id: vars
+        run: echo "tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+      - name: Login to GHCR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+      - name: Build and push images
+        env:
+          OWNER: ${{ github.repository_owner }}
+          TAG: ${{ github.sha }}
+        run: |
+          OWNER="$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
+          docker build -t ghcr.io/$OWNER/flashbox-api:$TAG ./api
+          docker build -t ghcr.io/$OWNER/flashbox-worker:$TAG ./worker
+          docker build -t ghcr.io/$OWNER/flashbox-web:$TAG ./web
+          docker push ghcr.io/$OWNER/flashbox-api:$TAG
+          docker push ghcr.io/$OWNER/flashbox-worker:$TAG
+          docker push ghcr.io/$OWNER/flashbox-web:$TAG
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+    # Never run two deploys to the same environment at once.
+    concurrency: deploy-${{ github.ref_name }}
+    env:
+      # main deploys to the prod droplet; staging deploys to the staging droplet.
+      HOST: ${{ github.ref_name == 'main' && secrets.DO_HOST_PROD || secrets.DO_HOST_STAGING }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.DO_SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+      - name: Wait for droplet first boot
+        # On a fresh droplet, cloud-init may still be installing Docker.
+        run: ssh root@$HOST "cloud-init status --wait >/dev/null && mkdir -p /opt/flashbox"
+      - name: Copy deployment files
+        run: |
+          scp deploy/docker-compose.yml deploy/deploy.sh deploy/rollback.sh root@$HOST:/opt/flashbox/
+          ssh root@$HOST "chmod +x /opt/flashbox/deploy.sh /opt/flashbox/rollback.sh"
+      - name: Log droplet in to GHCR
+        # Token goes over stdin so it never appears in the command line or logs.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: echo "$GH_TOKEN" | ssh root@$HOST "docker login ghcr.io -u '$ACTOR' --password-stdin"
+      - name: Deploy
+        env:
+          OWNER: ${{ github.repository_owner }}
+          TAG: ${{ needs.build.outputs.tag }}
+          TARGET: ${{ github.ref_name == 'main' && 'prod' || 'staging' }}
+        run: |
+          OWNER="$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
+          ssh root@$HOST "cd /opt/flashbox && GHCR_OWNER='$OWNER' ./deploy.sh '$TARGET' '$TAG'"
+      - name: Log droplet out of GHCR
+        # The job token expires anyway; don't leave it on the droplet's disk.
+        if: always()
+        run: ssh root@$HOST "docker logout ghcr.io" || true
