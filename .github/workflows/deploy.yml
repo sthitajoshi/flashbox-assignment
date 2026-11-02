@@ -49,11 +49,14 @@ jobs:
         env:
           OWNER: ${{ github.repository_owner }}
           TAG: ${{ github.sha }}
+          # Links each GHCR package to this repo on first push, so GITHUB_TOKEN can write to it.
+          SOURCE: ${{ github.server_url }}/${{ github.repository }}
         run: |
           OWNER="$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
-          docker build -t ghcr.io/$OWNER/flashbox-api:$TAG ./api
-          docker build -t ghcr.io/$OWNER/flashbox-worker:$TAG ./worker
-          docker build -t ghcr.io/$OWNER/flashbox-web:$TAG ./web
+          LABEL="org.opencontainers.image.source=$SOURCE"
+          docker build --label "$LABEL" -t ghcr.io/$OWNER/flashbox-api:$TAG ./api
+          docker build --label "$LABEL" -t ghcr.io/$OWNER/flashbox-worker:$TAG ./worker
+          docker build --label "$LABEL" -t ghcr.io/$OWNER/flashbox-web:$TAG ./web
           docker push ghcr.io/$OWNER/flashbox-api:$TAG
           docker push ghcr.io/$OWNER/flashbox-worker:$TAG
           docker push ghcr.io/$OWNER/flashbox-web:$TAG
