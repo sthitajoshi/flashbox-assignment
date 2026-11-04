@@ -15,6 +15,7 @@ app.get("/health", (_req, res) => res.status(200).json({ status: "healthy" }));
 app.get("/", async (_req, res) => {
   const payload = {
     message: "Hello from Flashbox API",
+    greating: process.env.GREATING || "hello Sthita",
     environment: process.env.APP_ENV || "local",
     timestamp: new Date().toISOString()
   };
