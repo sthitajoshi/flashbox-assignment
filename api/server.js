@@ -12,6 +12,7 @@ async function connectRedis() {
   await redis.connect();
 }
 app.get("/health", (_req, res) => res.status(200).json({ status: "healthy" }));
+ res.status(503).json({ error: "Queue unavailable" });
 app.get("/", async (_req, res) => {
   const payload = {
     message: "Hello from Flashbox API",
